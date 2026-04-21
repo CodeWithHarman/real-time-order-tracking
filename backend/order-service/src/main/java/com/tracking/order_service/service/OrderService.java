@@ -1,6 +1,8 @@
 package com.tracking.order_service.service;
 
 import com.tracking.order_service.entity.Order;
+import com.tracking.order_service.event.OrderEvent;
+import com.tracking.order_service.kafka.OrderProducer;
 import com.tracking.order_service.repository.OrderRepository;
 import org.springframework.stereotype.Service;
 
@@ -10,14 +12,24 @@ import java.util.Optional;
 public class OrderService {
 
     private final OrderRepository repository;
+    private final OrderProducer producer;
 
-    public OrderService(OrderRepository repository) {
+    public OrderService(OrderRepository repository, OrderProducer producer) {
         this.repository = repository;
+        this.producer = producer;
     }
 
     public Order createOrder(Order order) {
         order.setStatus("CREATED");
-        return repository.save(order);
+        Order saved = repository.save(order);
+
+        producer.sendEvent(new OrderEvent(
+                "ORDER_CREATED",
+                saved.getId(),
+                saved.getStatus()
+        ));
+
+        return saved;
     }
 
     public Optional<Order> getOrder(Long id) {
@@ -27,7 +39,16 @@ public class OrderService {
     public Order updateStatus(Long id, String status) {
         Order order = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
+
         order.setStatus(status);
-        return repository.save(order);
+        Order updated = repository.save(order);
+
+        producer.sendEvent(new OrderEvent(
+                "ORDER_UPDATED",
+                updated.getId(),
+                updated.getStatus()
+        ));
+
+        return updated;
     }
 }
